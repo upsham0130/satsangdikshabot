@@ -22,17 +22,28 @@ if "qa_chain" not in st.session_state:
 if "initialized" not in st.session_state:
     st.session_state.initialized = False
 
-# Set API key - try Streamlit secrets first, then environment variable, then hardcoded (for local dev)
+# Set API key - try Streamlit secrets first, then environment variable
 try:
     if "GOOGLE_API_KEY" in st.secrets:
         os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-    elif "GOOGLE_API_KEY" not in os.environ:
-        # Fallback for local development
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyA32QT_Nb6f2-6NxG31ZMx6AxBwbrTOOIw"
 except Exception:
-    # No secrets file found, use environment variable or fallback
-    if "GOOGLE_API_KEY" not in os.environ:
-        os.environ["GOOGLE_API_KEY"] = "AIzaSyA32QT_Nb6f2-6NxG31ZMx6AxBwbrTOOIw"
+    pass  # No secrets file found, will use environment variable
+
+# Load from .env file if available (for local development)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, skip
+
+# Check if API key is set
+if "GOOGLE_API_KEY" not in os.environ or not os.environ["GOOGLE_API_KEY"]:
+    st.error("⚠️ GOOGLE_API_KEY not found! Please set it in:")
+    st.markdown("""
+    - **Local development**: Create a `.env` file with `GOOGLE_API_KEY=your-key`
+    - **Streamlit Cloud**: Add it in Settings → Secrets
+    """)
+    st.stop()
 
 @st.cache_resource
 def initialize_qa_chain():

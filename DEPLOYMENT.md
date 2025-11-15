@@ -77,7 +77,8 @@ Update your app files to read from Streamlit secrets instead of hardcoded keys:
 
 Replace:
 ```python
-os.environ["GOOGLE_API_KEY"] = "AIzaSyA32QT_Nb6f2-6NxG31ZMx6AxBwbrTOOIw"
+# API key should be set via environment variable or .env file
+# Never hardcode API keys in your code!
 ```
 
 With:

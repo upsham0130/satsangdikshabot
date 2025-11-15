@@ -2,7 +2,20 @@ import os
 import time
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyA32QT_Nb6f2-6NxG31ZMx6AxBwbrTOOIw"
+# Load API key from environment variable or .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, skip
+
+# Check if API key is set
+if "GOOGLE_API_KEY" not in os.environ or not os.environ["GOOGLE_API_KEY"]:
+    print("⚠️ ERROR: GOOGLE_API_KEY not found!")
+    print("Please set it in one of these ways:")
+    print("1. Create a .env file with: GOOGLE_API_KEY=your-key")
+    print("2. Export it: export GOOGLE_API_KEY=your-key")
+    exit(1)
 
 model = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 
