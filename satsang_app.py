@@ -139,7 +139,7 @@ def initialize_qa_chain():
             # Check if it's a quota error
             if "429" in error_str or "quota" in error_str.lower():
                 status_text.text(f"Quota exceeded in batch {batch_num}. Waiting 60 seconds...")
-                time.sleep(60)
+                time.sleep(10)
             else:
                 status_text.text(f"Error in batch {batch_num}. Waiting 4 seconds before retry...")
                 time.sleep(4)
@@ -225,34 +225,17 @@ if prompt := st.chat_input("Ask a question about Satsang Diksha..."):
     with st.chat_message("assistant"):
         try:
             message_placeholder = st.empty()
-            full_response = ""
+            message_placeholder.markdown("Thinking...")
             
-            # Try to stream the response
-            try:
-                for chunk in st.session_state.qa_chain.stream({"input": prompt}):
-                    if "answer" in chunk:
-                        chunk_answer = chunk["answer"]
-                        # If we get incremental updates, append them
-                        if isinstance(chunk_answer, str):
-                            if len(chunk_answer) > len(full_response):
-                                full_response = chunk_answer
-                                message_placeholder.markdown(full_response)
-                            elif chunk_answer != full_response:
-                                full_response = chunk_answer
-                                message_placeholder.markdown(full_response)
-            except Exception as stream_error:
-                # If streaming fails, fall back to invoke
-                st.warning("Streaming not available, using standard response...")
+            # Use invoke for more reliable response display
+            # Streaming with retrieval chains can be inconsistent
+            with st.spinner("Generating answer..."):
+                result = st.session_state.qa_chain.invoke({"input": prompt})
+                full_response = result.get("answer", str(result))
             
-            # If streaming didn't work or didn't produce a response, use invoke
-            if not full_response:
-                with st.spinner("Thinking..."):
-                    result = st.session_state.qa_chain.invoke({"input": prompt})
-                    full_response = result.get("answer", str(result))
-                    message_placeholder.markdown(full_response)
-            
-            # Add assistant response to chat history
+            # Display the full response
             if full_response:
+                message_placeholder.markdown(full_response)
                 st.session_state.messages.append({"role": "assistant", "content": full_response})
             else:
                 error_msg = "Sorry, I couldn't generate a response. Please try again."
