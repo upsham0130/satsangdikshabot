@@ -1,5 +1,6 @@
 import os
 import time
+import re
 import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.vectorstores import InMemoryVectorStore
@@ -64,13 +65,57 @@ def initialize_qa_chain():
     loader = PyPDFLoader(file_path)
     docs = loader.load()
     
-    # Split documents
+    # Split documents with smart separators to avoid cutting words
+    # This is especially important for multilingual content (Gujarati, Sanskrit, English)
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,  # chunk size (characters)
-        chunk_overlap=200,  # chunk overlap (characters)
+        chunk_size=800,  # Reduced size to minimize word breaks
+        chunk_overlap=250,  # Increased overlap to preserve context across boundaries
+        length_function=len,
+        separators=[
+            "\n\n\n",  # Triple newline (paragraph breaks)
+            "\n\n",    # Double newline (paragraph breaks)
+            "\n",      # Single newline (line breaks)
+            ". ",      # Sentence endings with space
+            "! ",      # Exclamation with space
+            "? ",      # Question mark with space
+            "; ",      # Semicolon with space
+            ", ",      # Comma with space
+            " ",       # Word boundaries (space)
+            "",        # Character boundaries (last resort)
+        ],
         add_start_index=True,  # track index in original document
+        keep_separator=True,   # Keep separators to maintain context
     )
+    
+    # Split documents
     all_splits = text_splitter.split_documents(docs)
+    
+    # Clean up broken words at chunk boundaries
+    def clean_chunk_text(text):
+        """Remove incomplete words at the start/end of chunks"""
+        if not text:
+            return text
+        
+        # Remove incomplete words at the start (words that don't start with space/punctuation and are followed by space)
+        # This catches cases like "hānt. He" -> ". He"
+        text = re.sub(r'^[^\s\.,!?;:()[\]{}"\'-]+(?=\s)', '', text)
+        
+        # Remove incomplete words at the end (words that don't end with space/punctuation)
+        # This catches cases like "the hānt" -> "the "
+        text = re.sub(r'(?<=\s)[^\s\.,!?;:()[\]{}"\'-]+$', '', text)
+        
+        # Remove standalone incomplete words (like "hānt" at start/end)
+        # Match words that are very short and don't end with punctuation
+        text = re.sub(r'^\s*[^\s\.,!?;:()[\]{}"\'-]{1,4}\s+', '', text)  # Start
+        text = re.sub(r'\s+[^\s\.,!?;:()[\]{}"\'-]{1,4}\s*$', '', text)  # End
+        
+        # Clean up multiple spaces
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
+    
+    # Apply cleaning to all chunks
+    for split in all_splits:
+        split.page_content = clean_chunk_text(split.page_content)
     
     # Add documents in batches to respect rate limits
     BATCH_SIZE = 5  # Process 5 documents at a time
@@ -120,8 +165,8 @@ def initialize_qa_chain():
     progress_bar.empty()
     status_text.empty()
     
-    # Create retriever
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+    # Create retriever - retrieve more chunks for better context
+    retriever = vector_store.as_retriever(search_kwargs={"k": 5})
     
     # Create prompt template
     system_prompt = (
@@ -132,7 +177,10 @@ def initialize_qa_chain():
         "understand and answer questions about words not in English. "
         "Be helpful, accurate, and concise. If the context doesn't contain enough information to "
         "answer the question, say so. If asked a morally or ethically questionable question, "
-        "say so and don't answer it."
+        "say so and don't answer it. "
+        "IMPORTANT: If you encounter incomplete words or text fragments in the context (like 'hānt' "
+        "or other broken words), ignore them and focus on complete, meaningful sentences. "
+        "Do not include partial words or fragments in your answer."
     )
     
     prompt = ChatPromptTemplate.from_messages([
